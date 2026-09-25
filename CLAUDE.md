@@ -28,6 +28,7 @@ batb/
   bin/batb
   .claude/commands/cogsworth.md
   .claude/commands/script/
+  .claude/scheduled-tasks/
   db/lumiere.sqlite
   files/
   tmp/
