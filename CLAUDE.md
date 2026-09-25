@@ -26,8 +26,7 @@ batb/
   schema.sql
   graph.html
   bin/batb
-  .claude/commands/cogsworth.md
-  .claude/commands/script/
+  .claude/scheduled-tasks/
   db/lumiere.sqlite
   files/
   tmp/
@@ -107,6 +106,6 @@ Agent はメタデータ登録・本文キャッシュ・用語付与・語彙�
 
 ## Cogsworth
 
-Cogsworth は、終了したカレンダー予定に添付された Gemini 議事録を `reference` に登録する仕組みである。仕組みと運用は [docs/cogsworth.md](./docs/cogsworth.md)、Agent が実行する手順は `.claude/commands/cogsworth.md` にまとめている。
+Cogsworth は、終了したカレンダー予定に添付された Gemini 議事録を `reference` に登録する仕組みで、Claude デスクトップアプリの定期タスクとして動く。仕組みと運用は [docs/cogsworth.md](./docs/cogsworth.md)、Agent が実行する手順と実行タイミングは `.claude/scheduled-tasks/cogsworth/SKILL.md` にまとめている。
 
-`/cogsworth` でバックグランドループを起動し、`/cogsworth off` で停止する。合図（ `AGENT_LOOP_TICK_COGSWORTH` ）を受け取ったら、未登録の議事録だけを `save --require-term` で登録し、新規件数を短く報告する。用語を推定できない場合は推測せず、`term infer` の結果をユーザーに確認する。
+未登録の議事録だけを `save --require-term` で登録し、新規件数を短く報告する。用語を推定できない議事録は推測で登録せず、予定の名前と Google Doc の ID を報告に残す。
