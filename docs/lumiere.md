@@ -2,7 +2,7 @@
 
 ## Overview
 
-Lumiere は BatB のローカル DB で、ファイルは `db/lumiere.sqlite` に置く。Backlog の課題 URL や Google Doc の URL など、外部サービスにある資料はそちらが正本で、Lumiere は索引と本文キャッシュを担う。ローカルファイルは `files/` に取り込み、そこを正本とする。資料本体は `reference` テーブル、クライアント名・会議名・人名などの共通語彙は `terms` ほかのテーブルで管理する。詳細な手順は [CLAUDE.md](../CLAUDE.md) を参照する。
+Lumiere は BatB のローカル DB で、ファイルは `db/lumiere.sqlite` に置く。Lumiere は資料の本文を持たず、タイトルと所在だけを記録する。所在は Backlog の課題 URL や Google Doc の URL、ローカルにしかない資料ならそのファイルのパスで、本文はいつもその正本から取得する。資料の索引は `reference` テーブル、クライアント名・会議名・人名などの共通語彙は `terms` ほかのテーブルで管理する。詳細な手順は [CLAUDE.md](../CLAUDE.md) を参照する。
 
 ## Schema
 
@@ -19,32 +19,31 @@ erDiagram
 
 ### Reference layer
 
-`reference` は会議議事録・課題・ドキュメントのキャッシュを 1 行で表す。`source` は重複登録を防ぐ一意キーである。
+`reference` は会議議事録・課題・ドキュメントの所在を 1 行で表す。`source` は重複登録を防ぐ一意キーである。
 
 | column | description |
 | :-- | :-- |
 | `id` | UUID |
 | `title` | 会議名・課題名など |
-| `content` | 本文キャッシュ |
-| `source` | 正本の URL、または `files/` 内のファイルの絶対パス |
+| `source` | 正本の URL、またはファイルの絶対パス |
 | `created_at` / `updated_at` | 登録・更新日時 |
 
-### File storage
+### Source
 
-外部サービスに正本を持たない資料は、リポジトリ内の `files/` に置く。`save --source` にローカルファイルのパスを渡すと、`files/<ファイル名>` へコピーし、そのコピーの絶対パスを `source` に記録する。元のファイルが一時ディレクトリや別のワークツリーにあっても、資料は消えない。
+`save --source` に渡した値は、次の形にそろえて記録する。Lumiere はファイルをコピーせず、存在しないファイルのパスは受け付けない。
 
 | 入力 | 記録される `source` |
 | :-- | :-- |
-| `/tmp/report.md` | `<repo>/files/report.md`（コピーを作る） |
-| `file:///tmp/report.md` | `<repo>/files/report.md`（同上） |
-| `<repo>/files/report.md` | そのまま（コピーしない） |
-| URL | そのまま |
+| `https://docs.google.com/document/d/{id}/...` | `https://docs.google.com/document/d/{id}/edit` |
+| `https://docs.google.com/presentation/d/{id}/...` | `https://docs.google.com/presentation/d/{id}/edit` |
+| その他の URL | そのまま |
+| `/tmp/report.md` | そのまま |
+| `file:///tmp/report.md` | `/tmp/report.md` |
+| `files/report.md`（相対パス） | カレントディレクトリからの絶対パス |
 
-同一性はファイル名で決まる。同じファイル名で `save` すると同じ 1 件を更新するため、日付や版を名前に含めて区別する。`files/` のファイル自体を置き換えるときは、そのファイルを上書きしてから `save` する。
+同じ `source` で `save` すると、同じ 1 件のタイトルと用語を更新する。
 
-ローカルファイルの本文はそのファイル自身なので、`--content-file` は省略する。HTML から本文テキストだけを取り出す場合のように、ファイルと本文キャッシュを分けたいときだけ渡す。`--content-file` は本文キャッシュだけを更新し、`files/` のファイルには書き戻さない。
-
-`files/` は `db/` と同じくローカル資産であり、git の追跡対象にしない。
+ファイルを動かしたり消したりすると資料を辿れなくなる。一時ディレクトリにある資料は、消えない場所に置いてから `save` する。リポジトリの `files/` はその置き場で、`db/` と同じくローカル資産として git の追跡対象にしない。
 
 ### Vocabulary layer
 
@@ -65,7 +64,7 @@ erDiagram
 
 `name` を含む別名は登録しない。`name` が一致する場所では別名も必ず一致するため、区別に寄与しない。`阪急交通社` に対する `阪急` のように、`name` より短い表記だけを別名にする。
 
-会議は Google Calendar の予定名だけを `name` に採用する。予定名でない呼び方は別名にする。語彙ジョブ（`term learn`）は会議を新しく作らず、既存の会議に引き当てられなければ読み飛ばす。新しい会議は予定名で `term add --category meeting` する。
+会議は Google Calendar の予定名だけを `name` に採用する。予定名でない呼び方は別名にする。語彙の学習（`term learn`）は会議を新しく作らず、既存の会議に引き当てられなければ読み飛ばす。新しい会議は予定名で `term add --category meeting` する。
 
 `reference_terms` は資料と用語の多対多リンクである。
 
@@ -85,15 +84,13 @@ CLI のサブコマンド名は英語のままだが、ドキュメント上は�
 
 ### Reference commands
 
-資料の保存・取得・検索に使う。
+資料の保存と検索に使う。
 
 | command | role |
 | :-- | :-- |
-| `save --title ... --source ... --content-file ...` | 保存（同一 `source` は upsert） |
-| `save --title ... --source ...` | ローカルファイルの保存。本文はそのファイルから読む |
+| `save --title ... --source ...` | 保存（同一 `source` は upsert） |
 | `save ... [--term NAME ...] [--require-term]` | 用語を手動指定、または title から自動推定 |
-| `get ID` | 本文取得 |
-| `query [KEYWORD ...]` | 全文検索 |
+| `query [KEYWORD ...]` | タイトルと `source` の検索 |
 | `query --term NAME ...` | 用語で絞り込み |
 | `list` | `query` の alias |
 
@@ -120,7 +117,7 @@ CLI のサブコマンド名は英語のままだが、ドキュメント上は�
 | `term add --name ... --category ...` | 用語を手動追加 |
 | `term merge SRC --into DST` | 用語を統合 |
 | `term remove NAME` | 用語を削除 |
-| `term learn ID` | 資料本文から用語と関係を抽出（`save` が自動で起動する） |
+| `term learn ID [FILE]` | 資料の本文から用語と関係を抽出（`FILE` を省くとローカルファイルの資料そのものを読む） |
 
 ### Graph command
 
@@ -134,31 +131,35 @@ CLI のサブコマンド名は英語のままだが、ドキュメント上は�
 
 ## Workflows
 
-検索では、まずタイトルや文面から拾える用語を確認し、その用語で資料を絞り込む。
+検索では、まずタイトルや文面から拾える用語を確認し、その用語で資料を絞り込む。本文は、見つかった資料の `source` から取得する。
 
 ```bash
 batb term infer "確定：トリプルエスさま定例"
 batb term query トリプルエス
 batb query --term トリプルエス
-batb get <id>
 ```
 
 保存では、title から用語を自動推定できる場合は `--term` を省略できる。推定できない場合は `--require-term` 付きで save を止め、用語を確認してから `--term` を付ける。
 
 ```bash
-batb save --title "..." --source "..." --content-file /tmp/body.md --require-term
+batb save --title "..." --source "..." --require-term
 batb save ... --term トリプルエス --term FDE
 ```
 
-`save` の直後、バックグラウンドで語彙ジョブ（ `term learn` ）が走り、本文から用語・別名・用語間の関係を登録する。`save` は登録を待たずに ID を返す。
+本文を読んだ資料は、`save` が返した ID と本文のファイルを `term learn` に渡し、本文から用語・別名・用語間の関係を登録する。ローカルファイルの資料では本文のファイルを省ける。本文のファイルは学習が終われば消してよい。
+
+```bash
+batb term learn <id> /tmp/body.md
+batb term learn <id>
+```
 
 ## Growth
 
 共通語彙は保存のたびに育つ。`schema.sql` は初期構築の種であり、DB ができたあとの正本は `terms` 系テーブルである。既存 DB に対して `schema.sql` を編集しても反映されない。
 
-育て方は自動と手動の 2 つがある。自動は語彙ジョブで、資料の本文から用語・別名・関係を抽出して登録する。手動は `term add` `term merge` `term remove` で、語彙の重複や粒度を人が整える。
+育て方は自動と手動の 2 つがある。自動は語彙の学習で、資料の本文から用語・別名・関係を抽出して登録する。手動は `term add` `term merge` `term remove` で、語彙の重複や粒度を人が整える。
 
-語彙ジョブは次の規則で語彙を壊さないようにしている。
+語彙の学習は次の規則で語彙を壊さないようにしている。
 
 | 規則 | 内容 |
 | :-- | :-- |
@@ -184,7 +185,7 @@ batb save ... --term トリプルエス --term FDE
 | :-- | :-- |
 | `db/refs.sqlite` | `db/lumiere.sqlite`（ファイル名の rename） |
 | テーブル `refs` | `reference` |
-| 列 `summary` | 削除 |
+| 列 `summary` / `content` | 削除 |
 | `tags` / `ref_tags` / `tag_rules` | `terms` / `reference_terms` / `term_aliases` |
 | category `tool` | `system` |
 

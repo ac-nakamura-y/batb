@@ -4,15 +4,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LUMIERE="$ROOT/db/lumiere.sqlite"
 SCHEMA="$ROOT/schema.sql"
-FILES_DIR="$ROOT/files"
 TMP_DIR="$ROOT/tmp"
-LOG="$TMP_DIR/batb.log"
 
 usage() {
   cat <<EOF
 usage:
-  batb save  --title TITLE --source SOURCE [--content-file PATH] [--term NAME ...] [--require-term]
-  batb get ID
+  batb save  --title TITLE --source SOURCE [--term NAME ...] [--require-term]
   batb query|list [--limit N] [--term NAME ...] [KEYWORD ...]
   batb reference link list ID
   batb reference link add ID --term NAME [...]
@@ -24,12 +21,12 @@ usage:
   batb term add --name NAME --category CAT [--description DESC] [--alias ALIAS ...]
   batb term merge SRC --into DST
   batb term remove NAME
-  batb term learn ID
+  batb term learn ID [FILE]
   batb graph [--out PATH]
 
 examples:
-  batb save --title "要件整理" --source "https://example.backlog.com/view/PROJ-1" --content-file /tmp/body.md --term トリプルエス --term FDE
-  batb get 550e8400-e29b-41d4-a716-446655440000
+  batb save --title "要件整理" --source "https://example.backlog.com/view/PROJ-1" --term トリプルエス --term FDE
+  batb term learn 550e8400-e29b-41d4-a716-446655440000 /tmp/body.md
   batb query --term トリプルエス 要件
   batb query --limit 10
   batb term infer "確定：トリプルエスさま定例"
@@ -63,35 +60,16 @@ abs_path() {
   printf '%s/%s' "$dir" "$base"
 }
 
-storage_path() {
-  local path="$1"
-  if [[ "$path" == "$FILES_DIR"/* ]]; then
-    printf '%s' "$path"
-  else
-    printf '%s/%s' "$FILES_DIR" "$(basename "$path")"
-  fi
-}
-
 normalize_source() {
   local source="${1#file://}"
   if [[ "$source" =~ docs\.google\.com/document/d/([a-zA-Z0-9_-]+) ]]; then
     printf 'https://docs.google.com/document/d/%s/edit' "${BASH_REMATCH[1]}"
   elif [[ "$source" =~ docs\.google\.com/presentation/d/([a-zA-Z0-9_-]+) ]]; then
     printf 'https://docs.google.com/presentation/d/%s/edit' "${BASH_REMATCH[1]}"
-  elif [[ "$source" == /* || -e "$source" ]]; then
-    storage_path "$source"
+  elif [[ -e "$source" ]]; then
+    abs_path "$source"
   else
     printf '%s' "$source"
-  fi
-}
-
-store_file() {
-  local origin="$1" stored="$2"
-  if [[ -e "$origin" && "$(abs_path "$origin")" != "$stored" ]]; then
-    cp "$origin" "$stored"
-  elif [[ ! -f "$stored" ]]; then
-    echo "error: source file not found: $origin" >&2
-    exit 1
   fi
 }
 
@@ -120,7 +98,7 @@ schema_is_current() {
   if [[ "$found" != "5" ]]; then
     return 1
   fi
-  ! column_exists reference summary
+  ! column_exists reference summary && ! column_exists reference content
 }
 
 rename_legacy_file() {
@@ -167,7 +145,7 @@ SQL
 
 init_db() {
   require_cmd sqlite3
-  mkdir -p "$ROOT/db" "$TMP_DIR" "$FILES_DIR"
+  mkdir -p "$ROOT/db" "$TMP_DIR"
   rename_legacy_file
 
   if [[ -f "$LUMIERE" ]] && schema_is_current; then
@@ -193,9 +171,12 @@ init_db() {
     db "$LUMIERE" "DROP TABLE term_sources;"
   fi
 
-  if column_exists reference summary; then
-    db "$LUMIERE" "ALTER TABLE reference DROP COLUMN summary;"
-  fi
+  local column
+  for column in summary content; do
+    if column_exists reference "$column"; then
+      db "$LUMIERE" "ALTER TABLE reference DROP COLUMN $column;"
+    fi
+  done
 }
 
 get_id_by_source() {
@@ -398,7 +379,7 @@ parse_terms_and_rest() {
 }
 
 cmd_save() {
-  local title="" source="" content_file=""
+  local title="" source=""
   local terms=()
   local require_term=0
 
@@ -410,10 +391,6 @@ cmd_save() {
         ;;
       --source)
         source="$2"
-        shift 2
-        ;;
-      --content-file)
-        content_file="$2"
         shift 2
         ;;
       --term)
@@ -438,15 +415,15 @@ cmd_save() {
   fi
 
   init_db
-  local origin="${source#file://}"
   source="$(normalize_source "$source")"
+  if [[ "$source" == /* && ! -f "$source" ]]; then
+    echo "error: source file not found: $source" >&2
+    exit 1
+  fi
 
-  local id ts esc_title esc_source abs_content is_new=0 term_id inferred_ids=()
+  local id ts esc_title esc_source term_id inferred_ids=()
   ts="$(now_iso)"
   id="$(get_id_by_source "$source")"
-  if [[ -z "$id" ]]; then
-    is_new=1
-  fi
 
   if [[ ${#terms[@]} -eq 0 ]]; then
     while IFS= read -r term_id; do
@@ -463,30 +440,19 @@ cmd_save() {
     validate_term_names "${terms[@]}"
   fi
 
-  if [[ "$source" == "$FILES_DIR"/* ]]; then
-    store_file "$origin" "$source"
-  fi
-
-  local body="${content_file:-$source}"
-  if [[ ! -f "$body" ]]; then
-    echo "error: content file not found: $body" >&2
-    exit 1
-  fi
-  abs_content="$(abs_path "$body")"
   esc_title="$(sql_escape "$title")"
   esc_source="$(sql_escape "$source")"
-  local esc_path esc_id
-  esc_path="$(sql_escape "$abs_content")"
+  local esc_id
 
   if [[ -n "$id" ]]; then
     esc_id="$(sql_escape "$id")"
     db "$LUMIERE" \
-      "UPDATE reference SET title = '$esc_title', content = readfile('$esc_path'), source = '$esc_source', updated_at = '$ts' WHERE id = '$esc_id';"
+      "UPDATE reference SET title = '$esc_title', source = '$esc_source', updated_at = '$ts' WHERE id = '$esc_id';"
   else
     require_cmd uuidgen
     id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
     db "$LUMIERE" \
-      "INSERT INTO reference (id, title, content, source, created_at, updated_at) VALUES ('$id', '$esc_title', readfile('$esc_path'), '$esc_source', '$ts', '$ts');"
+      "INSERT INTO reference (id, title, source, created_at, updated_at) VALUES ('$id', '$esc_title', '$esc_source', '$ts', '$ts');"
   fi
 
   if [[ ${#terms[@]} -gt 0 ]]; then
@@ -497,37 +463,7 @@ cmd_save() {
     link_reference_term_ids "$id" "${inferred_ids[@]}"
   fi
 
-  local script_path="$ROOT/bin/batb"
-  nohup "$script_path" term learn "$id" >>"$LOG" 2>&1 &
-  disown >/dev/null 2>&1 || true
-
   echo "$id"
-}
-
-cmd_get() {
-  if [[ $# -ne 1 ]]; then
-    echo "error: get requires exactly one id" >&2
-    exit 1
-  fi
-
-  init_db
-
-  local id esc
-  id="$1"
-  if ! reference_exists "$id"; then
-    echo "error: reference not found: $id" >&2
-    exit 1
-  fi
-  esc="$(sql_escape "$id")"
-
-  local has_content
-  has_content="$(db "$LUMIERE" "SELECT CASE WHEN content IS NULL OR content = '' THEN 0 ELSE 1 END FROM reference WHERE id = '$esc';")"
-  if [[ "$has_content" -eq 0 ]]; then
-    echo "error: no cached content for id=$id (re-save with --content-file)" >&2
-    exit 1
-  fi
-
-  db "$LUMIERE" "SELECT content FROM reference WHERE id = '$esc';"
 }
 
 build_like_clause() {
@@ -535,7 +471,7 @@ build_like_clause() {
   local term esc
   for term in "$@"; do
     esc="$(sql_escape "$term")"
-    clause="$clause AND (title LIKE '%$esc%' OR IFNULL(content, '') LIKE '%$esc%')"
+    clause="$clause AND (title LIKE '%$esc%' OR source LIKE '%$esc%')"
   done
   printf "%s" "$clause"
 }
@@ -1313,9 +1249,10 @@ SQL
   echo "removed: $1"
 }
 
+# 本文は FILE から読む。FILE を省くと、ローカルファイルの資料はそのファイル自身を読む。
 cmd_term_learn() {
-  if [[ $# -ne 1 ]]; then
-    echo "error: learn requires exactly one reference id" >&2
+  if [[ $# -lt 1 || $# -gt 2 ]]; then
+    echo "error: learn requires a reference id and an optional body file" >&2
     exit 1
   fi
 
@@ -1328,19 +1265,22 @@ cmd_term_learn() {
     exit 1
   fi
 
-  require_cmd agent
-
-  local content
-  content="$(db "$LUMIERE" "SELECT content FROM reference WHERE id = '$esc';")"
-  if [[ -z "$content" ]]; then
-    echo "error: no content to learn from: $id" >&2
+  local body="${2:-}"
+  if [[ -z "$body" ]]; then
+    body="$(db "$LUMIERE" "SELECT source FROM reference WHERE id = '$esc';")"
+  fi
+  if [[ ! -s "$body" ]]; then
+    echo "error: no body file to learn from: $body" >&2
+    echo "hint: batb term learn $id FILE" >&2
     exit 1
   fi
+
+  require_cmd agent
 
   local content_file json_file extracted
   content_file="$TMP_DIR/term_learn_${id}.md"
   json_file="$TMP_DIR/term_learn_${id}.json"
-  printf '%s' "$content" >"$content_file"
+  cp "$body" "$content_file"
 
   local catalog
   catalog="$(term_catalog)"
@@ -1461,9 +1401,6 @@ main() {
   case "$cmd" in
     save)
       cmd_save "$@"
-      ;;
-    get)
-      cmd_get "$@"
       ;;
     query)
       cmd_query "$@"
