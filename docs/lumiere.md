@@ -2,7 +2,7 @@
 
 ## Overview
 
-Lumiere は BatB のローカル DB で、ファイルは `db/lumiere.sqlite` に置く。Lumiere は資料の本文を持たず、タイトルと所在だけを記録する。所在は Backlog の課題 URL や Google Doc の URL、ローカルにしかない資料ならそのファイルのパスで、本文はいつもその正本から取得する。資料の索引は `reference` テーブル、クライアント名・会議名・人名などの共通語彙は `terms` ほかのテーブルで管理する。詳細な手順は [CLAUDE.md](../CLAUDE.md) を参照する。
+Lumiere は BatB のローカル DB で、ファイルは `db/lumiere.sqlite` に置く。Lumiere は資料の本文を持たず、タイトルと所在だけを記録する。Backlog の課題や Google Doc など外部サービスにある資料は URL を所在とし、本文はそのサービスから取得する。ローカルファイルは `files/` に取り込み、そこを正本とする。資料の索引は `reference` テーブル、クライアント名・会議名・人名などの共通語彙は `terms` ほかのテーブルで管理する。詳細な手順は [CLAUDE.md](../CLAUDE.md) を参照する。
 
 ## Schema
 
@@ -25,25 +25,23 @@ erDiagram
 | :-- | :-- |
 | `id` | UUID |
 | `title` | 会議名・課題名など |
-| `source` | 正本の URL、またはファイルの絶対パス |
+| `source` | 正本の URL、または `files/` 内のファイルの絶対パス |
 | `created_at` / `updated_at` | 登録・更新日時 |
 
-### Source
+### File storage
 
-`save --source` に渡した値は、次の形にそろえて記録する。Lumiere はファイルをコピーせず、存在しないファイルのパスは受け付けない。
+外部サービスに正本を持たない資料は、リポジトリ内の `files/` に置く。`save --source` にローカルファイルのパスを渡すと、`files/<ファイル名>` へコピーし、そのコピーの絶対パスを `source` に記録する。元のファイルが一時ディレクトリや別のワークツリーにあっても、資料は消えない。外部サービスの URL はコピーせず、そのまま記録する。
 
 | 入力 | 記録される `source` |
 | :-- | :-- |
-| `https://docs.google.com/document/d/{id}/...` | `https://docs.google.com/document/d/{id}/edit` |
-| `https://docs.google.com/presentation/d/{id}/...` | `https://docs.google.com/presentation/d/{id}/edit` |
-| その他の URL | そのまま |
-| `/tmp/report.md` | そのまま |
-| `file:///tmp/report.md` | `/tmp/report.md` |
-| `files/report.md`（相対パス） | カレントディレクトリからの絶対パス |
+| `/tmp/report.md` | `<repo>/files/report.md`（コピーを作る） |
+| `file:///tmp/report.md` | `<repo>/files/report.md`（同上） |
+| `<repo>/files/report.md` | そのまま（コピーしない） |
+| URL | そのまま |
 
-同じ `source` で `save` すると、同じ 1 件のタイトルと用語を更新する。
+同一性はファイル名で決まる。同じファイル名で `save` すると同じ 1 件を更新するため、日付や版を名前に含めて区別する。`files/` のファイル自体を置き換えるときは、そのファイルを上書きしてから `save` する。
 
-ファイルを動かしたり消したりすると資料を辿れなくなる。一時ディレクトリにある資料は、消えない場所に置いてから `save` する。リポジトリの `files/` はその置き場で、`db/` と同じくローカル資産として git の追跡対象にしない。
+`files/` は `db/` と同じくローカル資産であり、git の追跡対象にしない。
 
 ### Vocabulary layer
 
@@ -117,7 +115,7 @@ CLI のサブコマンド名は英語のままだが、ドキュメント上は�
 | `term add --name ... --category ...` | 用語を手動追加 |
 | `term merge SRC --into DST` | 用語を統合 |
 | `term remove NAME` | 用語を削除 |
-| `term learn ID [FILE]` | 資料の本文から用語と関係を抽出（`FILE` を省くとローカルファイルの資料そのものを読む） |
+| `term learn ID [FILE]` | 資料の本文から用語と関係を抽出（`FILE` を省くと `files/` に取り込んだファイルを読む） |
 
 ### Graph command
 

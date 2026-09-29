@@ -2,7 +2,7 @@
 
 ## Overview
 
-BatB は会議・チャット・ドキュメントの文脈を Agent に渡すためのワークスペースである。SQLite の Lumiere（ `db/lumiere.sqlite` ）に資料の所在を記録し、共通語彙で検索と分類をそろえる。資料の本文は正本（Backlog URL、Google Doc URL、ローカルファイルなど）にだけあり、Lumiere はタイトル・所在・用語だけを持つ。
+BatB は会議・チャット・ドキュメントの文脈を Agent に渡すためのワークスペースである。SQLite の Lumiere（ `db/lumiere.sqlite` ）に資料の所在を記録し、共通語彙で検索と分類をそろえる。Lumiere は資料の本文を持たず、タイトル・所在・用語だけを記録する。外部サービスの資料（Backlog URL、Google Doc URL など）は URL を所在とし、本文はそのサービスから取得する。外部に正本を持たないローカルファイルは `files/` に取り込み、そこを正本とする。
 
 Lumiere のスキーマと CLI の詳細は [docs/lumiere.md](./docs/lumiere.md)、議事録の自動取り込みは [docs/cogsworth.md](./docs/cogsworth.md) にまとめている。
 
@@ -16,7 +16,7 @@ Lumiere のスキーマと CLI の詳細は [docs/lumiere.md](./docs/lumiere.md)
 | `reference_terms` | 資料と用語の紐付け |
 | `term_relations` | 用語間の関係（works_for, part_of, uses など） |
 
-語彙の学習（ `term learn ID [FILE]` ）は、資料の本文から用語・別名・用語間の関係を登録する。本文は `FILE` から読み、ローカルファイルの資料では `FILE` を省くとそのファイル自身を読む。既存の用語は名前と別名で引き当てるため、`阪急` のような別名が新しい用語として増えることはない。会議だけは例外で、語彙の学習では新しく作らない。会議は Google Calendar の予定名で `term add --category meeting` する。
+語彙の学習（ `term learn ID [FILE]` ）は、資料の本文から用語・別名・用語間の関係を登録する。本文は `FILE` から読み、ローカルファイルの資料では `FILE` を省くと `files/` に取り込んだファイルを読む。既存の用語は名前と別名で引き当てるため、`阪急` のような別名が新しい用語として増えることはない。会議だけは例外で、語彙の学習では新しく作らない。会議は Google Calendar の予定名で `term add --category meeting` する。
 
 ```
 batb/
@@ -90,7 +90,7 @@ Agent は資料の登録・用語付与・語彙の学習まで行う。本文�
 
 `save` するときの `--source` は種別ごとに次の形式で書く。形式をそろえると同一資料の重複登録を防げる。本文は表の fetch 手段で正本から取得する。
 
-ローカルにしかないファイルは、そのファイルの絶対パスを `source` に記録する。ファイルを動かしたり消したりすると資料を辿れなくなるため、一時ディレクトリにあるファイルは `files/` など消えない場所に置いてから `save` する。
+ローカルファイルを `--source` に渡すと、`files/` へコピーしたうえで、そのコピーの絶対パスを `source` に記録する。元のファイルが動いたり消えたりしても資料は残る。ファイル名が同じ資料は同じ 1 件として扱われるため、日付や版を含む名前を付ける。
 
 `--require-term` を付けると、title からの用語推定に失敗した場合に save を止める。推定できないときは `term infer` の結果をユーザーに確認し、`--term` で明示してから save する。
 
@@ -100,7 +100,7 @@ Agent は資料の登録・用語付与・語彙の学習まで行う。本文�
 | Slack | permalink URL | `slack_read_thread` / `slack_read_channel` / `slack_read_file` |
 | Google Doc | `https://docs.google.com/.../d/{id}/edit` | `read_file_content` |
 | Notion | `https://www.notion.so/{pageId}` | Notion MCP |
-| local | ファイルの絶対パス | ファイル read |
+| local | `files/{ファイル名}` の絶対パス | ファイル read |
 
 ## Cogsworth
 
