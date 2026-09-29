@@ -9,7 +9,7 @@ timezone: Asia/Tokyo
 
 ## Overview
 
-終了した会議の Gemini 議事録を資料データベースに取り込む。議事録の正本は Google Doc にあり、データベースが持つのは検索用のコピーである。データベースは `~/batb` にあり、`~/batb/bin/batb` がその操作コマンドである。
+終了した会議の Gemini 議事録を資料データベースに取り込む。議事録の本文は Google Doc にだけあり、データベースが持つのは議事録の所在と用語である。データベースは `~/batb` にあり、`~/batb/bin/batb` がその操作コマンドである。
 
 処理は登録済みの確認、未登録の抽出、登録、報告の順に進む。
 
@@ -47,11 +47,9 @@ flowchart LR
 
 ## Registration
 
-未登録の議事録それぞれについて、本文の取得、会議の用語の確認、登録の順に処理する。
+未登録の議事録それぞれについて、会議の用語の確認、登録、語彙の学習の順に処理する。
 
-本文は Google Drive の `read_file_content` で取得し、`~/batb/tmp/cogsworth_<doc_id>.txt` に書き出す。
-
-次に、会議そのものを表す用語が登録済みか確かめる。
+まず、会議そのものを表す用語が登録済みか確かめる。
 
 ```bash
 ~/batb/bin/batb term infer "<予定の名前>"
@@ -63,15 +61,24 @@ flowchart LR
 ~/batb/bin/batb term add --name "<予定の名前>" --category meeting
 ```
 
-そのうえで議事録を登録する。`--title` に渡した予定の名前から、クライアント名やプロジェクト名などの関係する用語は自動で結び付けられる。
+そのうえで議事録を登録する。`--title` に渡した予定の名前から、クライアント名やプロジェクト名などの関係する用語は自動で結び付けられる。登録すると、資料の ID が返る。
 
 ```bash
 ~/batb/bin/batb save \
   --title "<予定の名前>" \
   --source "https://docs.google.com/document/d/<doc_id>/edit" \
-  --content-file ~/batb/tmp/cogsworth_<doc_id>.txt \
   --require-term
 ```
+
+最後に、議事録の本文から語彙を学習させる。本文は Google Drive の `read_file_content` で取得する。本文から用語と関係を抽出して JSON にまとめ、登録で返った ID とともに渡す。JSON の形と抽出の規則は `~/batb/docs/lumiere.md` の Learning に従い、既存の表記は `~/batb/bin/batb term list` で確かめる。本文から用語が 1 つも見つからなければ、学習は行わない。
+
+```bash
+~/batb/bin/batb term learn <id> <<'EOF'
+{"terms": [...], "relations": [...]}
+EOF
+```
+
+学習が失敗しても、議事録の登録は済んでいる。登録をやり直したり、学習を繰り返したりせず、予定の名前とエラーを報告に残す。
 
 ## Unresolved terms
 
@@ -81,6 +88,6 @@ flowchart LR
 
 ## Report
 
-新しく登録した件数と、それぞれの予定の名前を挙げる。用語を結び付けられずに飛ばしたものがあれば、予定の名前と Google Doc の ID を併せて挙げる。新規が `1` 件もなければ、その旨を `1` 行で述べる。
+新しく登録した件数と、それぞれの予定の名前を挙げる。用語を結び付けられずに飛ばしたものがあれば、予定の名前と Google Doc の ID を併せて挙げる。語彙の学習が失敗したものがあれば、予定の名前とエラーを挙げる。新規が `1` 件もなければ、その旨を `1` 行で述べる。
 
-議事録の登録以外はしない。リポジトリのファイルの編集やコミットは行わない。
+議事録の登録と語彙の学習以外はしない。リポジトリのファイルの編集やコミットは行わない。
