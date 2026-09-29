@@ -22,12 +22,12 @@ usage:
   batb term add --name NAME --category CAT [--description DESC] [--alias ALIAS ...]
   batb term merge SRC --into DST
   batb term remove NAME
-  batb term learn ID [FILE]
+  batb term learn ID < JSON
   batb graph [--out PATH]
 
 examples:
   batb save --title "要件整理" --source "https://example.backlog.com/view/PROJ-1" --term トリプルエス --term FDE
-  batb term learn 550e8400-e29b-41d4-a716-446655440000 /tmp/body.md
+  batb term learn 550e8400-e29b-41d4-a716-446655440000 < /tmp/terms.json
   batb query --term トリプルエス 要件
   batb query --limit 10
   batb term infer "確定：トリプルエスさま定例"
@@ -250,16 +250,6 @@ term_category_label() {
     meta) printf "メタ" ;;
     *) printf "%s" "$1" ;;
   esac
-}
-
-# プロンプトに渡す既存語彙の一覧。行に名前以外を混ぜない。
-# 別名まで載せるとモデルが注記ごと name として写すため、名前だけを出す。
-term_catalog() {
-  db -separator '' "$LUMIERE" \
-    "SELECT t.category || ': ' || t.name
-     FROM terms t
-     ORDER BY $(term_category_order_sql_t), t.name
-     LIMIT 200;"
 }
 
 # 名前か別名の完全一致で引き当てる。category を渡すと、
@@ -988,46 +978,22 @@ cmd_term_add() {
 }
 
 parse_agent_json() {
-  local json_file="$1" reference_id="${2:-}"
+  local json="$1" reference_id="$2"
   require_cmd python3
-  python3 - "$json_file" "$reference_id" "$LUMIERE" <<'PY'
+  python3 - "$json" "$reference_id" "$LUMIERE" <<'PY'
 import json, sqlite3, sys
 from datetime import datetime
 
-json_file, reference_id, db_path = sys.argv[1:4]
-with open(json_file, encoding="utf-8") as f:
-    raw = f.read().strip()
-if not raw:
-    sys.exit(1)
+raw, reference_id, db_path = sys.argv[1:4]
+try:
+    data = json.loads(raw)
+except json.JSONDecodeError as exc:
+    sys.exit(f"error: invalid JSON: {exc}")
+if not isinstance(data, dict) or not data.get("terms"):
+    sys.exit('error: JSON must be an object with a non-empty "terms" list')
 
-def extract_json(raw):
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start >= 0 and end > start:
-            return json.loads(raw[start:end + 1])
-        start = raw.find("[")
-        end = raw.rfind("]")
-        if start >= 0 and end > start:
-            return json.loads(raw[start:end + 1])
-    return None
-
-data = extract_json(raw)
-if data is None:
-    sys.exit(1)
-
-items = []
-relations = []
-if isinstance(data, dict):
-    items = data.get("terms") or []
-    relations = data.get("relations") or []
-elif isinstance(data, list):
-    items = data
-
-if not items:
-    sys.exit(1)
+items = data["terms"]
+relations = data.get("relations") or []
 
 conn = sqlite3.connect(db_path, timeout=5)
 now = datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -1104,7 +1070,7 @@ for item in items:
         )
         known.add(alias)
 
-# 関係は用語を作り終えてから読む。同じ応答で現れた用語も端点にできる。
+# 関係は用語を作り終えてから読む。同じ JSON に現れた用語も端点にできる。
 RELATIONS = ("works_for", "part_of", "uses")
 for item in relations:
     if not isinstance(item, dict):
@@ -1138,12 +1104,11 @@ for item in relations:
     except sqlite3.IntegrityError as exc:
         print(f"warn: skipped relation {from_name} -{relation}-> {to_name}: {exc}", file=sys.stderr)
 
-if reference_id:
-    for term_id in term_ids:
-        conn.execute(
-            "INSERT OR IGNORE INTO reference_terms (reference_id, term_id) VALUES (?, ?)",
-            (reference_id, term_id),
-        )
+for term_id in term_ids:
+    conn.execute(
+        "INSERT OR IGNORE INTO reference_terms (reference_id, term_id) VALUES (?, ?)",
+        (reference_id, term_id),
+    )
 
 conn.commit()
 PY
@@ -1270,54 +1235,28 @@ SQL
   echo "removed: $1"
 }
 
-# 本文は FILE から読む。FILE を省くと、ローカルファイルの資料はそのファイル自身を読む。
+# 資料の本文から抽出した用語と関係の JSON を標準入力から読み、語彙に登録して資料に紐付ける。
 cmd_term_learn() {
-  if [[ $# -lt 1 || $# -gt 2 ]]; then
-    echo "error: learn requires a reference id and an optional body file" >&2
+  if [[ $# -ne 1 ]]; then
+    echo "error: learn requires exactly one reference id" >&2
+    exit 1
+  fi
+  if [[ -t 0 ]]; then
+    echo "error: learn reads JSON from stdin" >&2
+    echo "hint: batb term learn $1 < terms.json" >&2
     exit 1
   fi
 
   init_db
 
-  local id="$1" esc
-  esc="$(sql_escape "$id")"
+  local id="$1"
   if ! reference_exists "$id"; then
     echo "error: reference not found: $id" >&2
     exit 1
   fi
 
-  local body="${2:-}"
-  if [[ -z "$body" ]]; then
-    body="$(db "$LUMIERE" "SELECT source FROM reference WHERE id = '$esc';")"
-  fi
-  if [[ ! -s "$body" ]]; then
-    echo "error: no body file to learn from: $body" >&2
-    echo "hint: batb term learn $id FILE" >&2
-    exit 1
-  fi
-
-  require_cmd agent
-
-  local content_file json_file extracted
-  content_file="$TMP_DIR/term_learn_${id}.md"
-  json_file="$TMP_DIR/term_learn_${id}.json"
-  cp "$body" "$content_file"
-
-  local catalog
-  catalog="$(term_catalog)"
-
-  extracted="$(
-    agent -p --model auto --output-format text \
-      "既存の共通語彙は次のとおりです。\n${catalog}\n一致する概念があれば、name には一覧の表記を 1 文字も変えずに書き、文書中の表記が違う場合だけその表記を aliases に入れてください。一覧に無いものだけ新しい用語にしてください。\n\n@$(abs_path "$content_file") 以下の文書からクライアント名・人物名・プロジェクト名・業務工程・チーム名・システム名・会議名と、それらの関係を抽出してください。会議は Google Calendar の予定名だけを採用するため、一覧にある会議名のみを挙げ、一覧に無い会議は挙げないでください。JSON オブジェクトのみを出力し、形式は {\"terms\":[{\"name\":\"...\",\"category\":\"client|person|project|process|team|system|meeting\",\"aliases\":[\"...\"],\"description\":\"...\"}],\"relations\":[{\"from\":\"...\",\"to\":\"...\",\"relation\":\"works_for|part_of|uses\"}]} にしてください。関係は works_for（人物→プロジェクト）、part_of（会議→クライアント、人物→業務工程）、uses（業務工程→システム）の 3 種類のみとし、from と to には terms に挙げた name を書いてください。" \
-      2>/dev/null || true
-  )"
-  printf '%s' "$extracted" >"$json_file"
-  if ! parse_agent_json "$json_file" "$id"; then
-    echo "error: term learn failed for id=$id" >&2
-    rm -f "$content_file" "$json_file"
-    exit 1
-  fi
-  rm -f "$content_file" "$json_file"
+  parse_agent_json "$(cat)" "$id"
+  print_reference_terms_line "$id"
 }
 
 cmd_graph() {

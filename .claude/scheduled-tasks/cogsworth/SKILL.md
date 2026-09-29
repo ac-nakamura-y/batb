@@ -70,10 +70,12 @@ flowchart LR
   --require-term
 ```
 
-最後に、議事録の本文から語彙を学習させる。本文は Google Drive の `read_file_content` で取得して `~/batb/tmp/cogsworth_<doc_id>.txt` に書き出し、登録で返った ID とともに渡す。
+最後に、議事録の本文から語彙を学習させる。本文は Google Drive の `read_file_content` で取得する。本文から用語と関係を抽出して JSON にまとめ、登録で返った ID とともに渡す。JSON の形と抽出の規則は `~/batb/docs/lumiere.md` の Learning に従い、既存の表記は `~/batb/bin/batb term list` で確かめる。
 
 ```bash
-~/batb/bin/batb term learn <id> ~/batb/tmp/cogsworth_<doc_id>.txt
+~/batb/bin/batb term learn <id> <<'EOF'
+{"terms": [...], "relations": [...]}
+EOF
 ```
 
 学習が失敗しても、議事録の登録は済んでいる。登録をやり直したり、学習を繰り返したりせず、予定の名前とエラーを報告に残す。

@@ -16,7 +16,7 @@ Lumiere のスキーマと CLI の詳細は [docs/lumiere.md](./docs/lumiere.md)
 | `reference_terms` | 資料と用語の紐付け |
 | `term_relations` | 用語間の関係（works_for, part_of, uses など） |
 
-語彙の学習（ `term learn ID [FILE]` ）は、資料の本文から用語・別名・用語間の関係を登録する。本文は `FILE` から読み、ローカルファイルの資料では `FILE` を省くと `files/` に取り込んだファイルを読む。既存の用語は名前と別名で引き当てるため、`阪急` のような別名が新しい用語として増えることはない。会議だけは例外で、語彙の学習では新しく作らない。会議は Google Calendar の予定名で `term add --category meeting` する。
+語彙の学習（ `term learn ID < JSON` ）は、資料の本文から抽出した用語・別名・用語間の関係を登録する。抽出は資料を読んだ Agent が行い、JSON の形と規則は [docs/lumiere.md](./docs/lumiere.md) の Learning に従う。既存の用語は名前と別名で引き当てるため、`阪急` のような別名が新しい用語として増えることはない。会議だけは例外で、語彙の学習では新しく作らない。会議は Google Calendar の予定名で `term add --category meeting` する。
 
 ```
 batb/
@@ -46,7 +46,7 @@ batb/
 | 用語追加 | `batb term add --name N --category CAT [--alias A ...]` |
 | 用語統合 | `batb term merge SRC --into DST`（別名・紐付け・関係を移す） |
 | 用語削除 | `batb term remove NAME`（資料が紐付いていれば拒否する） |
-| 語彙学習 | `batb term learn ID [FILE]`（本文のファイルから学習する） |
+| 語彙学習 | `batb term learn ID < JSON`（本文から抽出した用語と関係を登録する） |
 | 資料の用語 | `batb reference link list|add|remove|set ID --term NAME ...` |
 | 関係グラフ | `batb graph [--out PATH]` |
 
@@ -65,7 +65,7 @@ flowchart LR
   saveStep --> intent
 ```
 
-Agent は資料の登録・用語付与・語彙の学習まで行う。本文を読んだ資料は、`save` のあとにその本文を `term learn ID FILE` に渡す。
+Agent は資料の登録・用語付与・語彙の学習まで行う。本文を読んだ資料は、`save` のあとに本文から用語と関係を抽出し、`term learn ID` に JSON で渡す。
 
 | principle | detail |
 | :-- | :-- |
