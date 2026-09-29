@@ -70,7 +70,7 @@ flowchart LR
   --require-term
 ```
 
-最後に、議事録の本文から語彙を学習させる。本文は Google Drive の `read_file_content` で取得する。本文から用語と関係を抽出して JSON にまとめ、登録で返った ID とともに渡す。JSON の形と抽出の規則は `~/batb/docs/lumiere.md` の Learning に従い、既存の表記は `~/batb/bin/batb term list` で確かめる。
+最後に、議事録の本文から語彙を学習させる。本文は Google Drive の `read_file_content` で取得する。本文から用語と関係を抽出して JSON にまとめ、登録で返った ID とともに渡す。JSON の形と抽出の規則は `~/batb/docs/lumiere.md` の Learning に従い、既存の表記は `~/batb/bin/batb term list` で確かめる。本文から用語が 1 つも見つからなければ、学習は行わない。
 
 ```bash
 ~/batb/bin/batb term learn <id> <<'EOF'
