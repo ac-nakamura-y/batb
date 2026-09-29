@@ -4,7 +4,7 @@
 
 BatB は会議・チャット・ドキュメントの文脈を Agent に渡すためのワークスペースである。SQLite の Lumiere（ `db/lumiere.sqlite` ）に資料の所在を記録し、共通語彙で検索と分類をそろえる。Lumiere は資料の本文を持たず、タイトル・所在・用語だけを記録する。外部サービスの資料（Backlog URL、Google Doc URL など）は URL を所在とし、本文はそのサービスから取得する。外部に正本を持たないローカルファイルは `files/` に取り込み、そこを正本とする。
 
-Lumiere のスキーマと CLI の詳細は [docs/lumiere.md](./docs/lumiere.md)、議事録の自動取り込みは [docs/cogsworth.md](./docs/cogsworth.md) にまとめている。
+Lumiere のスキーマと CLI の詳細は [docs/lumiere.md](./docs/lumiere.md)、議事録の自動取り込みは [docs/cogsworth.md](./docs/cogsworth.md)、中村宛の依頼の Issue 化は [docs/plumette.md](./docs/plumette.md) にまとめている。
 
 `reference` テーブルが資料の索引である。`query` で絞り込み、本文は `source` から取得する。用語の正本は `terms` テーブル群（共通語彙）で、save 時に title から自動推定する。同一 `source` への再 `save` は upsert される。
 
@@ -23,6 +23,7 @@ batb/
   CLAUDE.md
   docs/lumiere.md
   docs/cogsworth.md
+  docs/plumette.md
   schema.sql
   graph.html
   bin/batb
@@ -107,3 +108,9 @@ Agent は資料の登録・用語付与・語彙の学習まで行う。本文�
 Cogsworth は、終了したカレンダー予定に添付された Gemini 議事録を `reference` に登録する仕組みで、Claude デスクトップアプリの定期タスクとして動く。仕組みと運用は [docs/cogsworth.md](./docs/cogsworth.md)、Agent が実行する手順と実行タイミングは `.claude/scheduled-tasks/cogsworth/SKILL.md` にまとめている。
 
 未登録の議事録だけを `save --require-term` で登録し、本文から語彙を学習させて、新規件数を短く報告する。用語を推定できない議事録は推測で登録せず、予定の名前と Google Doc の ID を報告に残す。
+
+## Plumette
+
+Plumette は、議事録と Slack に届いた中村宛の依頼を Linear の Issue にする仕組みで、Claude デスクトップアプリの定期タスクとして動く。仕組みと運用は [docs/plumette.md](./docs/plumette.md)、Agent が実行する手順と実行タイミングは `.claude/scheduled-tasks/plumette/SKILL.md` にまとめている。
+
+未起票の依頼だけを marutto-ops チームに Triage 状態で作り、入口ごとに結果を報告する。重複は直近 `14` 日の自分の Issue と出典を突き合わせて判定するため、Issue の本文は必ず出典の引用から書く。宛先や担当を読み取れない依頼は推測で起票せず、出典の URL を報告に残す。
