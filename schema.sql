@@ -3,7 +3,6 @@
 CREATE TABLE IF NOT EXISTS reference (
   id         TEXT PRIMARY KEY,
   title      TEXT NOT NULL,
-  content    TEXT,
   source     TEXT NOT NULL UNIQUE,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

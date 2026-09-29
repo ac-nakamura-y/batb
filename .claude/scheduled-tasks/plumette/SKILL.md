@@ -9,7 +9,7 @@ timezone: Asia/Tokyo
 
 ## Overview
 
-議事録と Slack に届いた中村勇士宛の依頼を集め、Linear の Issue にする。依頼はそれぞれの場所に残ったままで、ここで作るのは着手の入口となる Issue である。議事録は `~/batb` の資料データベースにあり、`~/batb/bin/batb` がその操作コマンドである。
+議事録と Slack に届いた中村勇士宛の依頼を集め、Linear の Issue にする。依頼はそれぞれの場所に残ったままで、ここで作るのは着手の入口となる Issue である。議事録の所在は `~/batb` の資料データベースが持ち、`~/batb/bin/batb` がその操作コマンドである。本文は Google Doc にだけあるので、読むときは Google Drive から取る。
 
 Backlog は対象にしない。依頼は Backlog の課題としてそこに残り、担当も期限もその課題が持つ。Linear に写すと同じ作業が 2 か所に並ぶ。受け皿を持たない議事録と Slack だけが対象である。
 
@@ -54,7 +54,7 @@ fields: ["title", "description", "url"]
 ~/batb/bin/batb query --limit 50
 ```
 
-出典の Google Doc の ID が起票済みの一覧にある議事録は、本文を読まずに飛ばす。残ったものだけ `~/batb/bin/batb get <id>` で本文を読む。
+出典の Google Doc の ID が起票済みの一覧にある議事録は、本文を読まずに飛ばす。残ったものだけ、出典の URL から Google Drive の `read_file_content` で本文を読む。
 
 Slack は自分宛のメンションを検索する。自分の Slack user id は `slack_search_public_and_private` の説明に書かれた値を使い、他の場所から持ち込まない。`limit` の上限は `20` なので、結果が過去 `2` 日より古くなるまで `cursor` を辿る。
 
