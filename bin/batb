@@ -338,8 +338,7 @@ get_reference_terms_display() {
 }
 
 # 同じ分類の別の用語に一致した、より長い文字列に含まれるだけの一致は捨てる。
-# `エリクシール AC内部定例` に一致した会議は、その中の `内部定例` を別名に持つ会議を拾わせない。
-infer_terms_sql() {
+infer_terms() {
   local text="$1" columns="$2"
   local esc
   esc="$(sql_escape "$text")"
@@ -361,14 +360,6 @@ infer_terms_sql() {
           AND length(y.s) > length(x.s) AND instr(lower(y.s), lower(x.s)) > 0
      )
      ORDER BY $(term_category_order_sql_t), t.name;"
-}
-
-infer_term_ids_from_text() {
-  infer_terms_sql "$1" "t.id"
-}
-
-infer_terms_from_text() {
-  infer_terms_sql "$1" "t.name, t.category"
 }
 
 parse_terms_and_rest() {
@@ -443,7 +434,7 @@ cmd_save() {
   if [[ ${#terms[@]} -eq 0 ]]; then
     while IFS= read -r term_id; do
       [[ -n "$term_id" ]] && inferred_ids+=("$term_id")
-    done < <(infer_term_ids_from_text "$title")
+    done < <(infer_terms "$title" "t.id")
   fi
 
   if [[ "$require_term" -eq 1 && ${#terms[@]} -eq 0 && ${#inferred_ids[@]} -eq 0 ]]; then
@@ -933,7 +924,7 @@ cmd_term_infer() {
     echo "error: infer requires text" >&2
     exit 1
   fi
-  infer_terms_from_text "$*"
+  infer_terms "$*" "t.name, t.category"
 }
 
 cmd_term_add() {
