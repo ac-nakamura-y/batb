@@ -113,4 +113,4 @@ Cogsworth は、終了したカレンダー予定に添付された Gemini 議�
 
 Plumette は、議事録と Slack に届いた中村宛の依頼を Linear の Issue にする仕組みで、Claude デスクトップアプリの定期タスクとして動く。仕組みと運用は [docs/plumette.md](./docs/plumette.md)、Agent が実行する手順と実行タイミングは `.claude/scheduled-tasks/plumette/SKILL.md` にまとめている。
 
-未起票の依頼だけを marutto-ops チームに Triage 状態で作り、入口ごとに結果を報告する。重複は直近 `14` 日の自分の Issue と出典を突き合わせて判定するため、Issue の本文は必ず出典の引用から書く。宛先や担当を読み取れない依頼は推測で起票せず、出典の URL を報告に残す。
+未起票の依頼だけを marutto-ops チームに Triage 状態で作り、入口ごとに結果を報告する。重複は、依頼の出典と依頼が指す Google のファイルを自分の Issue と突き合わせて判定する。出典の照合を成り立たせるため、Issue の本文は必ず出典の引用から書く。宛先や担当を読み取れない依頼は推測で起票せず、出典の URL を報告に残す。
