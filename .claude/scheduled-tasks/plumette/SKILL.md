@@ -9,23 +9,24 @@ timezone: Asia/Tokyo
 
 ## Overview
 
-議事録と Slack に届いた中村勇士宛の依頼を集め、Linear の Issue にする。依頼はそれぞれの場所に残ったままで、ここで作るのは着手の入口となる Issue である。議事録の所在は `~/batb` の資料データベースが持ち、`~/batb/bin/batb` がその操作コマンドである。本文は Google Doc にだけあるので、読むときは Google Drive から取る。
+議事録と Slack に届いた中村勇士宛の依頼を集め、中村に確認したうえで Linear の Issue にする。依頼はそれぞれの場所に残ったままで、ここで作るのは着手の入口となる Issue である。議事録の所在は `~/batb` の資料データベースが持ち、`~/batb/bin/batb` がその操作コマンドである。本文は Google Doc にだけあるので、読むときは Google Drive から取る。
 
 Backlog は対象にしない。依頼は Backlog の課題としてそこに残り、担当も期限もその課題が持つ。Linear に写すと同じ作業が 2 か所に並ぶ。受け皿を持たない議事録と Slack だけが対象である。
 
-処理は起票済みの確認、候補の収集、未起票の抽出、起票、報告の順に進む。
+処理は起票済みの確認、候補の収集、未起票の抽出、確認、起票、報告の順に進む。
 
 ```mermaid
 flowchart LR
   listIssues[起票済み] --> collect[収集]
   collect --> findNew[未起票]
-  findNew --> saveIssue[起票]
+  findNew --> confirm[確認]
+  confirm --> saveIssue[起票]
   saveIssue --> report[報告]
 ```
 
 ## Registered issues
 
-最初に、起票済みの依頼を調べる。Linear の `list_issues` を共通の引数で `3` 回呼び、結果を合わせて起票済みの一覧とする。
+最初に、起票済みの依頼と確認済みの依頼を調べる。Linear の `list_issues` を共通の引数で `3` 回呼び、結果を合わせて起票済みの一覧とする。
 
 ```yaml
 team: marutto-ops
@@ -42,14 +43,16 @@ fields: ["title", "description", "url", "statusType"]
 
 進行中の作業は `14` 日より前に作られていることもあるので、着手中と未着手は作成日を問わずに取る。この実行で起票した Issue も、以降の候補と照合するため一覧に加える。`list_issues` の `query` は曖昧検索で、本文に書かれた URL やトークンを拾わないため使わない。
 
+確認済みの依頼は、確認の記録 `~/batb/tmp/plumette-asked.txt` から読む。記録は 1 行に 1 件で、出典の文字列と Issue の title をタブで区切って書いてある。ファイルがなければ、確認済みの依頼はまだない。
+
 候補は次の 2 つの照合にかけ、どちらかに当たれば起票しない。表の「未完了」は、`statusType` が `completed` でも `canceled` でもないことを指す。
 
 | check | 照合に使う文字列 | 照合先 |
 | :-- | :-- | :-- |
-| 出典 | 議事録は Google Doc の ID、Slack は permalink の `p` で始まるタイムスタンプ | 一覧のすべての Issue |
+| 出典 | 議事録は Google Doc の ID、Slack は permalink の `p` で始まるタイムスタンプ | 一覧のすべての Issue と確認の記録 |
 | ファイル | 依頼の文面が指す Google のスライド・スプレッドシート・ドキュメントの ID | 一覧の未完了の Issue |
 
-出典の照合は、同じ依頼を二度起票しないためにある。ファイルの照合は、進行中の作業に含まれる依頼を別の Issue にしないためにあり、出典のリンクを持たない手作りの Issue もこれで拾える。議事録の Google Doc は出典なので、ファイルの照合には使わない。1 つの会議から別々の宿題が出るためである。
+出典の照合は、同じ依頼を二度起票せず、二度確認しないためにある。ファイルの照合は、進行中の作業に含まれる依頼を別の Issue にしないためにあり、出典のリンクを持たない手作りの Issue もこれで拾える。議事録の Google Doc は出典なので、ファイルの照合には使わない。1 つの会議から別々の宿題が出るためである。
 
 一覧の本文は長いと途中で切れる。出典のリンクは本文の先頭にあるので、出典の照合は一覧の本文で足りる。ファイルの照合にかける候補があるときは、本文が切れた未完了の Issue を先に `get_issue` で全文にする。
 
@@ -65,7 +68,7 @@ fields: ["title", "description", "url", "statusType"]
 ~/batb/bin/batb query --limit 50
 ```
 
-出典の Google Doc の ID が起票済みの一覧にある議事録は、本文を読まずに飛ばす。残ったものだけ、出典の URL から Google Drive の `read_file_content` で本文を読む。
+出典の Google Doc の ID が起票済みの一覧か確認の記録にある議事録は、本文を読まずに飛ばす。残ったものだけ、出典の URL から Google Drive の `read_file_content` で本文を読む。
 
 Slack は自分宛のメンションを検索する。自分の Slack user id は `slack_search_public_and_private` の説明に書かれた値を使い、他の場所から持ち込まない。`limit` の上限は `20` なので、結果が過去 `2` 日より古くなるまで `cursor` を辿る。
 
@@ -88,13 +91,21 @@ include_context: false
 
 Slack は投稿だけでは依頼かどうか分からないことがある。スレッドの文脈が要るときは `slack_read_thread` で親から読む。
 
-## Unresolved requests
+## Confirmation
 
-この実行に人はいない。宛先や担当が読み取れない候補を、推測で Issue にしてはならない。その候補は起票せずに飛ばし、出典の URL と一行の要約を報告に残す。判断は後から人が行う。
+起票する前に、候補ごとに起票するかを中村に確認する。確認は `AskUserQuestion` で行い、1 つの質問に 1 つの候補を載せる。1 回に聞けるのは `4` 件までなので、それを超える候補は続けて聞く。
+
+質問には、Creation に従って用意した title と project、出典の要約と URL を書く。選択肢は「起票する」と「起票しない」の 2 つとする。宛先や担当が読み取れない候補は、推測で決めず、その旨を質問に書く。「その他」で修正の指示が返れば、それに合わせて直してから起票する。
+
+聞く前に、候補を確認の記録に 1 行ずつ追記する。回答を待つ間に次の実行が始まっても同じ候補を聞き直さず、起票しないと答えた候補も再び聞かないためである。
+
+```bash
+printf '%s\t%s\n' '<出典の文字列>' '<title>' >> ~/batb/tmp/plumette-asked.txt
+```
 
 ## Creation
 
-Issue は Linear の `save_issue` で作る。既定値を次に示す。
+起票すると答えた候補を、Linear の `save_issue` で Issue にする。既定値を次に示す。
 
 | field | value |
 | :-- | :-- |
@@ -125,9 +136,8 @@ title は何をするかを一文で書く。description は出典の引用か�
 | :-- | :-- |
 | 起票した Issue | 入口ごとに title と URL |
 | project を付けられなかった Issue | Issue の名前 |
-| 宛先が読み取れずに飛ばした候補 | 出典の URL と一行の要約 |
 | ファイルの照合で飛ばした候補 | 出典の URL と、同じファイルが書かれた Issue の URL |
 
 起票が `1` 件もなければ、その旨を `1` 行で述べる。
 
-Issue の作成以外はしない。Slack へ返信せず、リポジトリのファイルの編集やコミットも行わない。
+Issue の作成と確認の記録への追記以外はしない。Slack へ返信せず、Git で管理するファイルの編集やコミットも行わない。
