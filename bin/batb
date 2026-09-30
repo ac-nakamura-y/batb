@@ -252,26 +252,15 @@ term_category_label() {
   esac
 }
 
-# 名前か別名の完全一致で引き当てる。category を渡すと、
-# 一致しなかった場合に同じ分類の用語名へちょうど 1 件含まれるかも見る。
+# 名前か別名の完全一致で引き当てる。
 resolve_term_id() {
-  local name="$1" category="${2:-}"
-  local esc esc_cat id
-  esc="$(sql_escape "$name")"
-  id="$(db "$LUMIERE" \
+  local esc
+  esc="$(sql_escape "$1")"
+  db "$LUMIERE" \
     "SELECT t.id FROM terms t
      LEFT JOIN term_aliases a ON a.term_id = t.id
      WHERE t.name = '$esc' OR a.alias = '$esc'
-     LIMIT 1;")"
-  if [[ -n "$id" || -z "$category" ]]; then
-    printf '%s' "$id"
-    return
-  fi
-  esc_cat="$(sql_escape "$category")"
-  db "$LUMIERE" \
-    "SELECT CASE count(*) WHEN 1 THEN min(id) ELSE '' END
-     FROM terms
-     WHERE category = '$esc_cat' AND instr(lower(name), lower('$esc')) > 0;"
+     LIMIT 1;"
 }
 
 validate_term_names() {
@@ -337,29 +326,28 @@ get_reference_terms_display() {
      );"
 }
 
-infer_term_ids_from_text() {
-  local text="$1"
+# 同じ分類の別の用語に一致した、より長い文字列に含まれるだけの一致は捨てる。
+infer_terms() {
+  local text="$1" columns="$2"
   local esc
   esc="$(sql_escape "$text")"
   db "$LUMIERE" \
-    "SELECT DISTINCT t.id
+    "WITH k AS (
+       SELECT id AS tid, name AS s FROM terms
+       UNION ALL
+       SELECT term_id, alias FROM term_aliases
+     ), m AS (
+       SELECT k.tid, k.s, t.category FROM k JOIN terms t ON t.id = k.tid
+        WHERE instr(lower('$esc'), lower(k.s)) > 0
+     )
+     SELECT DISTINCT $columns
      FROM terms t
-     LEFT JOIN term_aliases a ON a.term_id = t.id
-     WHERE instr(lower('$esc'), lower(t.name)) > 0
-        OR instr(lower('$esc'), lower(a.alias)) > 0
-     ORDER BY $(term_category_order_sql_t), t.name;"
-}
-
-infer_terms_from_text() {
-  local text="$1"
-  local esc
-  esc="$(sql_escape "$text")"
-  db "$LUMIERE" \
-    "SELECT DISTINCT t.name, t.category
-     FROM terms t
-     LEFT JOIN term_aliases a ON a.term_id = t.id
-     WHERE instr(lower('$esc'), lower(t.name)) > 0
-        OR instr(lower('$esc'), lower(a.alias)) > 0
+     JOIN m x ON x.tid = t.id
+     WHERE NOT EXISTS (
+       SELECT 1 FROM m y
+        WHERE y.tid <> x.tid AND y.category = x.category
+          AND length(y.s) > length(x.s) AND instr(lower(y.s), lower(x.s)) > 0
+     )
      ORDER BY $(term_category_order_sql_t), t.name;"
 }
 
@@ -435,7 +423,7 @@ cmd_save() {
   if [[ ${#terms[@]} -eq 0 ]]; then
     while IFS= read -r term_id; do
       [[ -n "$term_id" ]] && inferred_ids+=("$term_id")
-    done < <(infer_term_ids_from_text "$title")
+    done < <(infer_terms "$title" "t.id")
   fi
 
   if [[ "$require_term" -eq 1 && ${#terms[@]} -eq 0 && ${#inferred_ids[@]} -eq 0 ]]; then
@@ -762,7 +750,7 @@ upsert_term() {
   esc_category="$(sql_escape "$category")"
   esc_desc="$(sql_escape "$description")"
 
-  id="$(resolve_term_id "$name" "$category")"
+  id="$(resolve_term_id "$name")"
   if [[ -z "$id" ]]; then
     id="$(term_slug "$category" "$name")"
     esc_id="$(sql_escape "$id")"
@@ -772,8 +760,6 @@ upsert_term() {
     id="$(db "$LUMIERE" "SELECT id FROM terms WHERE id = '$esc_id' LIMIT 1;")"
   else
     esc_id="$(sql_escape "$id")"
-    # 引き当たった用語と表記が違うときは、その表記を別名として残す。
-    add_term_alias "$id" "$name"
     if [[ -n "$description" ]]; then
       db "$LUMIERE" \
         "UPDATE terms SET description = '$esc_desc', updated_at = '$ts' WHERE id = '$esc_id';"
@@ -925,7 +911,7 @@ cmd_term_infer() {
     echo "error: infer requires text" >&2
     exit 1
   fi
-  infer_terms_from_text "$*"
+  infer_terms "$*" "t.name, t.category"
 }
 
 cmd_term_add() {
@@ -1004,23 +990,14 @@ def slug(category, name):
         s = s.replace("__", "_")
     return f"{category}-{s.strip('_')}"
 
-def resolve(name, category=None):
-    """名前か別名の完全一致で引き当てる。category は当てにしない。"""
+def resolve(name):
+    """名前か別名の完全一致で引き当てる。"""
     row = conn.execute(
         "SELECT t.id FROM terms t LEFT JOIN term_aliases a ON a.term_id = t.id"
         " WHERE t.name = ? OR a.alias = ? LIMIT 1",
         (name, name),
     ).fetchone()
-    if row:
-        return row[0]
-    if not category:
-        return None
-    # 接頭辞を落とした表記の救済。同じ分類でちょうど 1 件に含まれるときだけ引き当てる。
-    rows = conn.execute(
-        "SELECT id FROM terms WHERE category = ? AND instr(lower(name), lower(?)) > 0",
-        (category, name),
-    ).fetchall()
-    return rows[0][0] if len(rows) == 1 else None
+    return row[0] if row else None
 
 term_ids = []
 for item in items:
@@ -1032,7 +1009,7 @@ for item in items:
         continue
     desc = (item.get("description") or "").strip()
 
-    term_id = resolve(name, category)
+    term_id = resolve(name)
     if term_id:
         if desc:
             conn.execute(
@@ -1055,12 +1032,11 @@ for item in items:
             continue
     term_ids.append(term_id)
 
-    # 引き当たった用語と表記が違うときは、その表記も別名の候補にする。
     # name や既存 alias を含む別名は、一致する場所が同じなので登録しない。
     term_name = conn.execute("SELECT name FROM terms WHERE id = ?", (term_id,)).fetchone()[0]
     known = {a for (a,) in conn.execute("SELECT alias FROM term_aliases WHERE term_id = ?", (term_id,))}
     known.add(term_name)
-    for alias in [name] + list(item.get("aliases") or []):
+    for alias in item.get("aliases") or []:
         alias = str(alias).strip()
         if not alias or any(k.lower() in alias.lower() for k in known):
             continue
