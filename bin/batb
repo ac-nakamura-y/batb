@@ -337,30 +337,38 @@ get_reference_terms_display() {
      );"
 }
 
-infer_term_ids_from_text() {
-  local text="$1"
+# 同じ分類の別の用語に一致した、より長い文字列に含まれるだけの一致は捨てる。
+# `エリクシール AC内部定例` に一致した会議は、その中の `内部定例` を別名に持つ会議を拾わせない。
+infer_terms_sql() {
+  local text="$1" columns="$2"
   local esc
   esc="$(sql_escape "$text")"
   db "$LUMIERE" \
-    "SELECT DISTINCT t.id
+    "WITH k AS (
+       SELECT id AS tid, name AS s FROM terms
+       UNION ALL
+       SELECT term_id, alias FROM term_aliases
+     ), m AS (
+       SELECT k.tid, k.s, t.category FROM k JOIN terms t ON t.id = k.tid
+        WHERE instr(lower('$esc'), lower(k.s)) > 0
+     )
+     SELECT DISTINCT $columns
      FROM terms t
-     LEFT JOIN term_aliases a ON a.term_id = t.id
-     WHERE instr(lower('$esc'), lower(t.name)) > 0
-        OR instr(lower('$esc'), lower(a.alias)) > 0
+     JOIN m x ON x.tid = t.id
+     WHERE NOT EXISTS (
+       SELECT 1 FROM m y
+        WHERE y.tid <> x.tid AND y.category = x.category
+          AND length(y.s) > length(x.s) AND instr(lower(y.s), lower(x.s)) > 0
+     )
      ORDER BY $(term_category_order_sql_t), t.name;"
 }
 
+infer_term_ids_from_text() {
+  infer_terms_sql "$1" "t.id"
+}
+
 infer_terms_from_text() {
-  local text="$1"
-  local esc
-  esc="$(sql_escape "$text")"
-  db "$LUMIERE" \
-    "SELECT DISTINCT t.name, t.category
-     FROM terms t
-     LEFT JOIN term_aliases a ON a.term_id = t.id
-     WHERE instr(lower('$esc'), lower(t.name)) > 0
-        OR instr(lower('$esc'), lower(a.alias)) > 0
-     ORDER BY $(term_category_order_sql_t), t.name;"
+  infer_terms_sql "$1" "t.name, t.category"
 }
 
 parse_terms_and_rest() {
