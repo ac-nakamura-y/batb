@@ -60,9 +60,9 @@ fields: ["title", "description", "url", "statusType"]
 
 ## Scope
 
-対象は、2 つの入口それぞれで過去 `2` 日に届いたもののうち、まだ起票されていない依頼である。この実行は毎時走るため、`2` 日あれば数回の失敗を挟んでも取りこぼしは起きない。遅れを理由に範囲を広げたり、候補から外したりしない。
+対象は、2 つの入口それぞれで過去 `4` 日に届いたもののうち、まだ起票されていない依頼である。`4` 日あれば週末をまたいでも、金曜の依頼が月曜と火曜の実行に残り、返信し忘れた案を示し続けられる。遅れを理由に範囲を広げたり、候補から外したりしない。
 
-議事録は資料データベースから取る。`created` が過去 `2` 日で、出典が Google Doc のものが対象である。
+議事録は資料データベースから取る。`created` が過去 `4` 日で、出典が Google Doc のものが対象である。
 
 ```bash
 ~/batb/bin/batb query --limit 50
@@ -70,11 +70,11 @@ fields: ["title", "description", "url", "statusType"]
 
 議事録の本文は、出典の URL から Google Drive の `read_file_content` で読む。
 
-Slack は自分宛のメンションを検索する。自分の Slack user id は `slack_search_public_and_private` の説明に書かれた値を使い、他の場所から持ち込まない。`limit` の上限は `20` なので、結果が過去 `2` 日より古くなるまで `cursor` を辿る。
+Slack は自分宛のメンションを検索する。自分の Slack user id は `slack_search_public_and_private` の説明に書かれた値を使い、他の場所から持ち込まない。`limit` の上限は `20` なので、結果が過去 `4` 日より古くなるまで `cursor` を辿る。
 
 ```yaml
 keywords: ["<自分の user id のメンション>"]
-filters: "after:<2 日前の日付>"
+filters: "after:<4 日前の日付>"
 natural_language_query: ""
 response_format: detailed
 include_context: false
