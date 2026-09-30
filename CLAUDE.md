@@ -103,18 +103,18 @@ Agent は資料の登録・用語付与・語彙の学習まで行う。本文�
 | Notion | `https://www.notion.so/{pageId}` | Notion MCP |
 | local | `files/{ファイル名}` の絶対パス | ファイル read |
 
-## Cogsworth
+## Scheduled tasks
 
-Cogsworth は、終了したカレンダー予定に添付された Gemini 議事録を `reference` に登録する仕組みで、Claude デスクトップアプリの定期タスクとして動く。仕組みと運用は [docs/cogsworth.md](./docs/cogsworth.md)、Agent が実行する手順と実行タイミングは `.claude/scheduled-tasks/cogsworth/SKILL.md` にまとめている。
+Cogsworth と Plumette は、Claude デスクトップアプリの定期タスクとして動く。手順書の正本はこのリポジトリの `.claude/scheduled-tasks/<name>/SKILL.md` で、アプリはその写しである `~/.claude/scheduled-tasks/<name>/SKILL.md` だけを読む。写しは正本に合わせて自動では更新されない。正本を変える Pull Request をマージしたら、同じ作業の中で写しも更新する。写し方は [.claude/scheduled-tasks/README.md](./.claude/scheduled-tasks/README.md) の Apply にある。
+
+### Cogsworth
+
+Cogsworth は、終了したカレンダー予定に添付された Gemini 議事録を `reference` に登録する。仕組みと運用は [docs/cogsworth.md](./docs/cogsworth.md)、Agent が実行する手順と実行タイミングは `.claude/scheduled-tasks/cogsworth/SKILL.md` にまとめている。
 
 未登録の議事録だけを `save --require-term` で登録し、本文から語彙を学習させて、新規件数を短く報告する。用語を推定できない議事録は推測で登録せず、予定の名前と Google Doc の ID を報告に残す。
 
-## Plumette
+### Plumette
 
-Plumette は、議事録と Slack に届いた中村宛の依頼を Linear の Issue にする仕組みで、Claude デスクトップアプリの定期タスクとして動く。仕組みと運用は [docs/plumette.md](./docs/plumette.md)、Agent が実行する手順と実行タイミングは `.claude/scheduled-tasks/plumette/SKILL.md` にまとめている。
+Plumette は、議事録と Slack に届いた中村宛の依頼を Linear の Issue にする。仕組みと運用は [docs/plumette.md](./docs/plumette.md)、Agent が実行する手順と実行タイミングは `.claude/scheduled-tasks/plumette/SKILL.md` にまとめている。
 
 未起票の依頼だけを marutto-ops チームに Triage 状態で作り、入口ごとに結果を報告する。重複は、依頼の出典と依頼が指す Google のファイルを自分の Issue と突き合わせて判定する。出典の照合を成り立たせるため、Issue の本文は必ず出典の引用から書く。宛先や担当を読み取れない依頼は推測で起票せず、出典の URL を報告に残す。
-
-## Scheduled tasks
-
-Cogsworth と Plumette の手順書の正本は `.claude/scheduled-tasks/<name>/SKILL.md` だが、アプリが読むのは `~/.claude/scheduled-tasks/<name>/SKILL.md` にある写しだけである。正本を変えても写しは自動では変わらないため、正本を変える Pull Request をマージしたら、同じ作業の中で写しも更新する。写し方は [.claude/scheduled-tasks/README.md](./.claude/scheduled-tasks/README.md) の Apply にある。
