@@ -4,7 +4,7 @@
 
 BatB は会議・チャット・ドキュメントの文脈を Agent に渡すためのワークスペースである。SQLite の Lumiere（ `db/lumiere.sqlite` ）に資料の所在を記録し、共通語彙で検索と分類をそろえる。Lumiere は資料の本文を持たず、タイトル・所在・用語だけを記録する。外部サービスの資料（Backlog URL、Google Doc URL など）は URL を所在とし、本文はそのサービスから取得する。外部に正本を持たないローカルファイルは `files/` に取り込み、そこを正本とする。
 
-Lumiere のスキーマと CLI の詳細は [docs/lumiere.md](./docs/lumiere.md)、議事録の自動取り込みは [docs/cogsworth.md](./docs/cogsworth.md)、中村宛の依頼の Issue 化は [docs/plumette.md](./docs/plumette.md)、メンションへの返信の下書きは [docs/potts.md](./docs/potts.md) にまとめている。
+Lumiere のスキーマと CLI の詳細は [docs/lumiere.md](./docs/lumiere.md)、議事録の自動取り込みは [docs/cogsworth.md](./docs/cogsworth.md)、中村宛の依頼の Issue 化は [docs/plumette.md](./docs/plumette.md)、メンションへの対応と返信の下書きは [docs/potts.md](./docs/potts.md) にまとめている。
 
 `reference` テーブルが資料の索引である。`query` で絞り込み、本文は `source` から取得する。用語の正本は `terms` テーブル群（共通語彙）で、save 時に title から自動推定する。同一 `source` への再 `save` は upsert される。
 
@@ -122,6 +122,6 @@ Plumette は、議事録と Slack に届いた中村宛の依頼を Linear の I
 
 ### Potts
 
-Potts は、Slack・Linear・Backlog で中村に届いたメンションに、返信の下書きを作る。仕組みと運用は [docs/potts.md](./docs/potts.md)、Agent が実行する手順と実行タイミングは `.claude/scheduled-tasks/potts/SKILL.md` にまとめている。
+Potts は、Slack・Linear・Backlog で中村に届いたメンションについて、依頼された作業をこなしてから返信の下書きを作る。仕組みと運用は [docs/potts.md](./docs/potts.md)、Agent が実行する手順と実行タイミングは `.claude/scheduled-tasks/potts/SKILL.md` にまとめている。
 
-返信が要り、まだ返信していないメンションにだけ下書きを作る。Slack はスレッドに Slack の下書きとして作り、下書きの機能がない Linear と Backlog は実行の報告に本文を書く。投稿も既読にすることもしない。サービスごとに見終えた位置を `~/batb/tmp/potts-cursor.txt` に残し、次の実行はその続きから見る。
+返信が要り、まだ返信していないメンションだけを扱う。行う作業は調査・レビュー・文章の案の作成のように読むことと書き起こすことで終わるものに限り、共有の場所に変更を加える作業、判断、秘密の情報の受け渡しは中村が行う作業として報告に残す。Slack はスレッドに Slack の下書きとして作り、下書きの機能がない Linear と Backlog は実行の報告に本文を書く。投稿も既読にすることもしない。サービスごとに見終えた位置を `~/batb/tmp/potts-cursor.txt` に残し、次の実行はその続きから見る。
