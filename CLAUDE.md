@@ -4,7 +4,7 @@
 
 BatB は会議・チャット・ドキュメントの文脈を Agent に渡すためのワークスペースである。SQLite の Lumiere（ `db/lumiere.sqlite` ）に資料の所在を記録し、共通語彙で検索と分類をそろえる。Lumiere は資料の本文を持たず、タイトル・所在・用語だけを記録する。外部サービスの資料（Backlog URL、Google Doc URL など）は URL を所在とし、本文はそのサービスから取得する。外部に正本を持たないローカルファイルは `files/` に取り込み、そこを正本とする。
 
-Lumiere のスキーマと CLI の詳細は [docs/lumiere.md](./docs/lumiere.md)、議事録の自動取り込みは [docs/cogsworth.md](./docs/cogsworth.md)、中村宛の依頼の Issue 化は [docs/plumette.md](./docs/plumette.md) にまとめている。
+Lumiere のスキーマと CLI の詳細は [docs/lumiere.md](./docs/lumiere.md)、議事録の自動取り込みは [docs/cogsworth.md](./docs/cogsworth.md)、中村宛の依頼の Issue 化は [docs/plumette.md](./docs/plumette.md)、メンションへの対応と返信の下書きは [docs/potts.md](./docs/potts.md) にまとめている。
 
 `reference` テーブルが資料の索引である。`query` で絞り込み、本文は `source` から取得する。用語の正本は `terms` テーブル群（共通語彙）で、save 時に title から自動推定する。同一 `source` への再 `save` は upsert される。
 
@@ -24,6 +24,7 @@ batb/
   docs/lumiere.md
   docs/cogsworth.md
   docs/plumette.md
+  docs/potts.md
   schema.sql
   graph.html
   bin/batb
@@ -105,7 +106,7 @@ Agent は資料の登録・用語付与・語彙の学習まで行う。本文�
 
 ## Scheduled tasks
 
-Cogsworth と Plumette は、Claude デスクトップアプリの定期タスクとして動く。手順書の正本はこのリポジトリの `.claude/scheduled-tasks/<name>/SKILL.md` で、アプリはその写しである `~/.claude/scheduled-tasks/<name>/SKILL.md` だけを読む。写しは正本に合わせて自動では更新されない。正本を変える Pull Request をマージしたら、同じ作業の中で写しも更新する。写し方は [.claude/scheduled-tasks/README.md](./.claude/scheduled-tasks/README.md) の Apply にある。
+Cogsworth・Plumette・Potts は、Claude デスクトップアプリの定期タスクとして動く。手順書の正本はこのリポジトリの `.claude/scheduled-tasks/<name>/SKILL.md` で、アプリはその写しである `~/.claude/scheduled-tasks/<name>/SKILL.md` だけを読む。写しは正本に合わせて自動では更新されない。正本を変える Pull Request をマージしたら、同じ作業の中で写しも更新する。写し方は [.claude/scheduled-tasks/README.md](./.claude/scheduled-tasks/README.md) の Apply にある。
 
 ### Cogsworth
 
@@ -118,3 +119,9 @@ Cogsworth は、終了したカレンダー予定に添付された Gemini 議�
 Plumette は、議事録と Slack に届いた中村宛の依頼を Linear の Issue にする。仕組みと運用は [docs/plumette.md](./docs/plumette.md)、Agent が実行する手順と実行タイミングは `.claude/scheduled-tasks/plumette/SKILL.md` にまとめている。
 
 未起票の依頼を Issue の案として表で示し、中村がそのセッションに返信した番号の案だけを marutto-ops チームに Triage 状態で作る。起票しないと返信された依頼は記録して以降は示さず、返信で触れなかった依頼は次の実行でも示す。重複は、依頼の出典と依頼が指す Google のファイルを自分の Issue と突き合わせて判定する。出典の照合を成り立たせるため、Issue の本文は必ず出典の引用から書く。宛先や担当を読み取れない依頼は推測で決めず、その旨を添えて示す。
+
+### Potts
+
+Potts は、Slack・Linear・Backlog で中村に届いたメンションについて、依頼された作業をこなしてから返信の下書きを作る。仕組みと運用は [docs/potts.md](./docs/potts.md)、Agent が実行する手順と実行タイミングは `.claude/scheduled-tasks/potts/SKILL.md` にまとめている。
+
+相手が中村の返事を待っていて、まだ返信していないメンションだけを扱い、返信がなくても困らないものには何もしない。行う作業は調査・レビュー・文章の案の作成のように読むことと書き起こすことで終わるものに限り、共有の場所に変更を加える作業、判断、秘密の情報の受け渡しは中村が行う作業として報告に残す。Slack はスレッドに Slack の下書きとして作り、下書きの機能がない Linear と Backlog は実行の報告に本文を書く。投稿も既読にすることもしない。サービスごとに見終えた位置を `~/batb/tmp/potts-cursor.txt` に残し、次の実行はその続きから見る。
