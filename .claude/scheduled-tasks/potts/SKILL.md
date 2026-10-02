@@ -55,7 +55,7 @@ include_context: false
 
 ### Linear
 
-`get_notifications` で受信箱を新しい順に取り、`createdAt` が起点以前の通知が出るまで `cursor` を辿る。対象は `category` が `mentions` の通知である。
+`get_notifications` で受信箱を新しい順に取り、`updatedAt` が起点以前の通知が出るまで `cursor` を辿る。止める判断に `updatedAt` を使うのは、受信箱が更新の新しい順に並んでいても、新しい通知を見落とさないためである。対象は、`createdAt` が起点より新しく、`category` が `mentions` の通知である。
 
 通知の本文は途中で切れている。通知の `url` から Issue の ID を取り、`list_comments` で該当のコメントと前後のやり取りを全文で読む。`url` の末尾の `#comment-<id>` が、メンションのコメントを指す。
 
