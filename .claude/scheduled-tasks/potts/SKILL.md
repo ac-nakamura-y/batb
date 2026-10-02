@@ -113,7 +113,7 @@ printf 'slack\t%s\nlinear\t%s\nbacklog\t%s\n' '<slack>' '<linear>' '<backlog>' >
 
 ## Report
 
-下書きを作ったメンションを表にまとめる。要旨には、メンションへのリンクを付ける。
+報告は日本語で書く。下書きを作ったメンションを表にまとめ、要旨にはメンションへのリンクを付ける。
 
 ```markdown
 | # | service | 相手 | 要旨 | 下書き |
